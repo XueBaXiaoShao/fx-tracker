@@ -129,19 +129,26 @@ def format_rate(value: float) -> str:
 
 async def _request(method: str, url: str, params: dict) -> dict:
     last_error: Exception | None = None
-    for _ in range(max(1, config.request_retries)):
+    for attempt in range(max(1, config.request_retries)):
         try:
             async with httpx.AsyncClient(
                 timeout=httpx.Timeout(config.request_timeout),
                 follow_redirects=True,
             ) as client:
                 response = await client.request(method, url, params=params)
+                if response.status_code == 429:
+                    raise _RateLimited("接口限流（HTTP 429）")
                 response.raise_for_status()
                 return response.json()
-        except (httpx.HTTPError, ValueError) as exc:
+        except (httpx.HTTPError, ValueError, _RateLimited) as exc:
             last_error = exc
-            await asyncio.sleep(0.5)
-    raise RateError(f"汇率接口请求失败（{last_error}）")
+            await asyncio.sleep(1.0 * (attempt + 1))
+    detail = f"{type(last_error).__name__}: {last_error}" if last_error else "未知错误"
+    raise RateError(f"汇率接口请求失败：{detail}（{url}）")
+
+
+class _RateLimited(Exception):
+    pass
 
 
 async def fetch_rate(base: str, quote: str) -> float:

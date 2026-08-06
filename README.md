@@ -40,7 +40,7 @@ NoneBot2 + OneBot v11 独立插件，命令挂在 **`/shou fx`** 下，与 xqq-f
 | `FX_ENABLED` | `false` | 强制启用（测试时可直接设 true） |
 | `FX_DATA_DIR` | `data/` | 状态与关注列表目录（回退 `LOCALSTORE_DATA_DIR`） |
 | `FX_REQUEST_TIMEOUT` | `15` | 汇率接口超时（秒） |
-| `FX_REQUEST_RETRIES` | `2` | 请求重试次数 |
+| `FX_REQUEST_RETRIES` | `3` | 请求重试次数（429 限流自动重试） |
 
 ## 安装
 

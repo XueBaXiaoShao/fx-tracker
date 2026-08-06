@@ -35,7 +35,7 @@ class Config:
     enabled: bool = False
     # 请求超时（秒）与重试次数
     request_timeout: int = 15
-    request_retries: int = 2
+    request_retries: int = 3
     # 状态与关注列表数据目录
     data_dir: str = "data"
 
@@ -44,7 +44,7 @@ class Config:
         return cls(
             enabled=_env_bool("FX_ENABLED"),
             request_timeout=_env_int("FX_REQUEST_TIMEOUT", 15),
-            request_retries=_env_int("FX_REQUEST_RETRIES", 2),
+            request_retries=_env_int("FX_REQUEST_RETRIES", 3),
             data_dir=(
                 _env_str("FX_DATA_DIR")
                 or _env_str("LOCALSTORE_DATA_DIR")
