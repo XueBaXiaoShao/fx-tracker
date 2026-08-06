@@ -65,7 +65,7 @@ async def test_disabled_blocks_usage(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(state.config, "enabled", False)
 
     matcher = _FakeMatcher()
-    await _run(commands.handle_fx(_FakeEvent(1), matcher, Message("price btc")))
+    await _run(commands.handle_fx(_FakeEvent(1), matcher, Message("fx price btc")))
 
     assert "未启用" in str(matcher.sent[-1])
 
@@ -75,7 +75,7 @@ async def test_enable_requires_admin(monkeypatch, tmp_path) -> None:
     _write_admin(tmp_path, 999)
 
     matcher = _FakeMatcher()
-    await _run(commands.handle_fx(_FakeEvent(100), matcher, Message("enable")))
+    await _run(commands.handle_fx(_FakeEvent(100), matcher, Message("fx enable")))
 
     assert "只有管理员" in str(matcher.sent[-1])
     assert state.is_enabled() is False
@@ -87,11 +87,11 @@ async def test_admin_enable_then_usage(monkeypatch, tmp_path) -> None:
     _write_admin(tmp_path, 999)
 
     matcher = _FakeMatcher()
-    await _run(commands.handle_fx(_FakeEvent(999), matcher, Message("enable")))
+    await _run(commands.handle_fx(_FakeEvent(999), matcher, Message("fx enable")))
     assert "已开启" in str(matcher.sent[-1])
     assert state.is_enabled() is True
 
-    await _run(commands.handle_fx(_FakeEvent(1), matcher, Message("add btc-usd")))
+    await _run(commands.handle_fx(_FakeEvent(1), matcher, Message("fx add btc-usd")))
     assert watchlist.list_pairs(1) == [("BTC", "USD")]
 
 
@@ -104,7 +104,7 @@ async def test_price_uses_rates(monkeypatch, tmp_path) -> None:
 
     monkeypatch.setattr(rates, "fetch_rate", fake_fetch)
     matcher = _FakeMatcher()
-    await _run(commands.handle_fx(_FakeEvent(1), matcher, Message("price usd cny")))
+    await _run(commands.handle_fx(_FakeEvent(1), matcher, Message("fx price usd cny")))
 
     assert "1 USD = 7.1234 CNY" in str(matcher.sent[-1])
 
@@ -130,7 +130,26 @@ async def test_group_switch_disables_fx(monkeypatch, tmp_path) -> None:
 
     matcher = _FakeMatcher()
     await _run(
-        commands.handle_fx(GroupEvent(1, 912875556), matcher, Message("price btc"))
+        commands.handle_fx(
+            GroupEvent(1, 912875556), matcher, Message("fx price btc")
+        )
     )
 
     assert "该群已禁用汇率功能" in str(matcher.sent[-1])
+
+
+async def test_fx_prefix_stripped_before_dispatch(monkeypatch, tmp_path) -> None:
+    """真实 CommandArg 带 fx 前缀（如 fx price JPY/CNY），不能落入帮助。"""
+    monkeypatch.setattr(state.config, "data_dir", str(tmp_path))
+    state.set_enabled(True)
+
+    async def fake_fetch(base, quote):
+        return 0.04283
+
+    monkeypatch.setattr(rates, "fetch_rate", fake_fetch)
+    matcher = _FakeMatcher()
+    await _run(
+        commands.handle_fx(_FakeEvent(1), matcher, Message("fx price JPY/CNY"))
+    )
+
+    assert "1 JPY = 0.042830 CNY" in str(matcher.sent[-1])

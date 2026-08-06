@@ -68,7 +68,12 @@ async def handle_fx(
     arg: Message = CommandArg(),
 ) -> None:
     text = (arg.extract_plain_text() or "").strip()
-    parts = text.split(maxsplit=1)
+    # CommandArg 包含命令后的全部内容，如 "fx price JPY/CNY"；先剥掉 fx 前缀
+    tokens = text.split(maxsplit=1)
+    if not tokens or tokens[0].lower() != "fx":
+        await matcher.finish(_help_text())
+    remainder = tokens[1].strip() if len(tokens) > 1 else ""
+    parts = remainder.split(maxsplit=1)
     sub = parts[0].lower() if parts else ""
     rest = parts[1].strip() if len(parts) > 1 else ""
 
