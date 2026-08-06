@@ -11,13 +11,14 @@ NoneBot2 + OneBot v11 独立插件，命令挂在 **`/shou fx`** 下，与 xqq-f
 | 命令 | 说明 |
 | --- | --- |
 | `/shou fx price <币种对>` | 查询汇率，如 `BTC/USD`、`CNY/JPY` |
+| `/shou fx chart <币种对> [天数]` | 查看近 N 天汇率走势图（默认 30，最多 90） |
 | `/shou fx add <币种对>` | 加入我的关注列表 |
 | `/shou fx del <币种对>` | 移出我的关注列表 |
 | `/shou fx list` | 查看我的关注列表及最新汇率 |
 | `/shou fx enable` | 开启插件（仅管理员，测试用） |
 | `/shou fx disable` | 关闭插件（仅管理员） |
 
-币种对可用 `/`、`-` 或空格分隔，单币种默认兑 USD。
+币种对可用 `/`、`-` 或空格分隔，单币种默认兑 CNY。
 
 ## 数据源
 

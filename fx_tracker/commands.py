@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import re
 import json
 from pathlib import Path
@@ -11,7 +12,7 @@ from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment
 from nonebot.matcher import Matcher
 from nonebot.params import CommandArg
 
-from . import permissions, rates, state, watchlist
+from . import chart, permissions, rates, state, watchlist
 from .config import config
 
 
@@ -52,13 +53,14 @@ def _plugin_switch_enabled(event: MessageEvent) -> bool:
 def _help_text() -> str:
     return """【汇率插件】（测试，默认关闭）
 - /shou fx price <币种对> —— 查询汇率，如 BTC/USD、CNY/JPY
+- /shou fx chart <币种对> [天数] —— 查看近 N 天汇率走势图（默认 30 天）
 - /shou fx add <币种对> —— 加入我的关注列表
 - /shou fx del <币种对> —— 移出我的关注列表
 - /shou fx list —— 查看我的关注列表及最新汇率
 - /shou fx enable|disable —— 开启/关闭插件（仅管理员）
 
 支持法定货币（USD/CNY/JPY/EUR...）与虚拟货币（BTC/ETH/USDT...）；
-币种对可用 /、- 或空格分隔，单币种默认兑 USD。"""
+币种对可用 /、- 或空格分隔，单币种默认兑 CNY。"""
 
 
 @fx_cmd.handle()
@@ -97,6 +99,8 @@ async def handle_fx(
             await matcher.finish(_help_text())
         if sub == "price":
             await _cmd_price(matcher, rest)
+        elif sub in ("chart", "trend"):
+            await _cmd_chart(matcher, rest)
         elif sub == "add":
             await _cmd_add(event, matcher, rest)
         elif sub == "del":
@@ -114,6 +118,38 @@ async def _cmd_price(matcher: Matcher, value: str) -> None:
     value = await rates.fetch_rate(base, quote)
     await matcher.finish(
         f"1 {base} = {rates.format_rate(value)} {quote}"
+    )
+
+
+async def _cmd_chart(matcher: Matcher, value: str) -> None:
+    parts = value.split()
+    if not parts:
+        await matcher.finish("用法：/shou fx chart <币种对> [天数]")
+    pair_text = parts[0]
+    days = 30
+    if len(parts) >= 2 and parts[1].isdigit():
+        days = int(parts[1])
+    days = max(1, min(days, 90))
+    base, quote = rates.parse_pair(pair_text)
+    labels, values = await rates.fetch_history(base, quote, days)
+    if not values:
+        await matcher.finish("没有获取到走势数据")
+    png = chart.render_chart(
+        f"{base}/{quote} last {days}d",
+        labels,
+        values,
+    )
+    caption = (
+        f"{base}/{quote} 近{days}天走势"
+        f"（最新 {rates.format_rate(values[-1])}）"
+    )
+    await matcher.finish(
+        Message(
+            [
+                MessageSegment.image(f"base64://{base64.b64encode(png).decode()}"),
+                MessageSegment.text(caption),
+            ]
+        )
     )
 
 

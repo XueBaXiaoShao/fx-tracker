@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import date, timedelta
 
 import httpx
 
@@ -112,7 +113,7 @@ def parse_pair(text: str) -> tuple[str, str]:
         # 兼容连续六位写法：JPYCNY -> JPY/CNY、BTCETH -> BTC/ETH
         if len(symbol) == 6:
             return symbol[:3], symbol[3:]
-        return symbol, "USD"
+        return symbol, "CNY"
     if len(parts) == 2:
         return parts[0], parts[1]
     raise RateError(f"币种对格式错误：{text}")
@@ -186,3 +187,73 @@ async def _crypto_price(coin_id: str, fiat_code: str) -> float:
     if not coin or fiat_code.lower() not in coin:
         raise RateError("CoinGecko 未返回该币种价格")
     return float(coin[fiat_code.lower()])
+
+
+async def fetch_history(
+    base: str, quote: str, days: int = 30
+) -> tuple[list[str], list[float]]:
+    """获取近 N 天汇率走势，返回（日期标签, 数值列表）。"""
+    days = max(1, min(days, 90))
+    base_kind, base_key = classify(base)
+    quote_kind, quote_key = classify(quote)
+
+    if base_kind == "fiat" and quote_kind == "fiat":
+        start = (date.today() - timedelta(days=days)).isoformat()
+        data = await _request(
+            "GET",
+            f"https://api.frankfurter.app/{start}..",
+            {"from": base_key, "to": quote_key},
+        )
+        rates_map = data.get("rates") if isinstance(data, dict) else None
+        if not rates_map or not isinstance(rates_map, dict):
+            raise RateError("Frankfurter 未返回走势数据")
+        labels = sorted(rates_map)
+        try:
+            values = [float(rates_map[label][quote_key]) for label in labels]
+        except (KeyError, TypeError, ValueError):
+            raise RateError("Frankfurter 走势数据格式异常")
+        return labels, values
+
+    if base_kind == "crypto" and quote_kind == "fiat":
+        prices = await _crypto_history(base_key, quote_key, days)
+        return _crypto_labels(prices), prices
+
+    if base_kind == "fiat" and quote_kind == "crypto":
+        prices = await _crypto_history(quote_key, base_key, days)
+        return _crypto_labels(prices), [1.0 / p for p in prices if p > 0]
+
+    # 虚拟货币对虚拟货币：统一按 CNY 取两边再相除
+    base_prices = await _crypto_history(base_key, "cny", days)
+    quote_prices = await _crypto_history(quote_key, "cny", days)
+    count = min(len(base_prices), len(quote_prices))
+    values = [
+        base / quote
+        for base, quote in zip(base_prices[:count], quote_prices[:count])
+        if quote > 0
+    ]
+    return _crypto_labels(base_prices[:count]), values
+
+
+async def _crypto_history(coin_id: str, fiat_code: str, days: int) -> list[float]:
+    data = await _request(
+        "GET",
+        f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart",
+        {"vs_currency": fiat_code.lower(), "days": days},
+    )
+    prices = data.get("prices") if isinstance(data, dict) else None
+    if not isinstance(prices, list) or not prices:
+        raise RateError("CoinGecko 未返回走势数据")
+    result: list[float] = []
+    for item in prices:
+        if isinstance(item, list) and len(item) >= 2:
+            try:
+                result.append(float(item[1]))
+            except (TypeError, ValueError):
+                continue
+    if not result:
+        raise RateError("CoinGecko 走势数据格式异常")
+    return result
+
+
+def _crypto_labels(prices: list[float]) -> list[str]:
+    return [f"D{index + 1}" for index in range(len(prices))]

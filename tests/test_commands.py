@@ -153,3 +153,27 @@ async def test_fx_prefix_stripped_before_dispatch(monkeypatch, tmp_path) -> None
     )
 
     assert "1 JPY = 0.042830 CNY" in str(matcher.sent[-1])
+
+
+async def test_chart_sends_image(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(state.config, "data_dir", str(tmp_path))
+    state.set_enabled(True)
+
+    async def fake_history(base, quote, days):
+        return (["08-01", "08-02"], [7.1, 7.2])
+
+    monkeypatch.setattr(rates, "fetch_history", fake_history)
+    monkeypatch.setattr(
+        commands.chart,
+        "render_chart",
+        lambda title, labels, values: b"\x89PNG-fake-data",
+    )
+
+    matcher = _FakeMatcher()
+    await _run(
+        commands.handle_fx(_FakeEvent(1), matcher, Message("fx chart usd-cny 7"))
+    )
+
+    message = matcher.sent[-1]
+    assert message[0].type == "image"
+    assert "走势" in str(message[1])
