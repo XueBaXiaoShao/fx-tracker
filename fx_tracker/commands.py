@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+import json
+from pathlib import Path
 
 from nonebot import on_command
 from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment
@@ -10,6 +12,7 @@ from nonebot.matcher import Matcher
 from nonebot.params import CommandArg
 
 from . import permissions, rates, state, watchlist
+from .config import config
 
 
 def _is_fx_event(event: MessageEvent) -> bool:
@@ -18,6 +21,32 @@ def _is_fx_event(event: MessageEvent) -> bool:
 
 
 fx_cmd = on_command("shou", rule=_is_fx_event, priority=1, block=True)
+
+
+def _plugin_switch_enabled(event: MessageEvent) -> bool:
+    """该群是否启用 fx_tracker（读取与 x_admin 共用的 plugin_switches.json）。"""
+    group_id = getattr(event, "group_id", None)
+    if group_id is None:
+        return True
+    try:
+        payload = json.loads(
+            (Path(config.data_dir) / "plugin_switches.json").read_text(
+                encoding="utf-8"
+            )
+        )
+    except (OSError, json.JSONDecodeError):
+        return True
+    if not isinstance(payload, dict):
+        return True
+    groups = payload.get("groups")
+    if isinstance(groups, dict):
+        entry = groups.get(str(group_id))
+        if isinstance(entry, dict) and "fx_tracker" in entry:
+            return bool(entry["fx_tracker"])
+    defaults = payload.get("defaults")
+    if isinstance(defaults, dict) and "fx_tracker" in defaults:
+        return bool(defaults["fx_tracker"])
+    return True
 
 
 def _help_text() -> str:
@@ -51,7 +80,9 @@ async def handle_fx(
             f"汇率插件已{'开启' if sub == 'enable' else '关闭'}"
         )
 
-    if not state.is_enabled():
+    if sub not in ("enable", "disable") and not _plugin_switch_enabled(event):
+        await matcher.finish("该群已禁用汇率功能")
+    if sub not in ("enable", "disable") and not state.is_enabled():
         await matcher.finish(
             "汇率插件当前未启用（测试模式），管理员可用 /shou fx enable 开启"
         )

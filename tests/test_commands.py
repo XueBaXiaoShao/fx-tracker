@@ -107,3 +107,30 @@ async def test_price_uses_rates(monkeypatch, tmp_path) -> None:
     await _run(commands.handle_fx(_FakeEvent(1), matcher, Message("price usd cny")))
 
     assert "1 USD = 7.1234 CNY" in str(matcher.sent[-1])
+
+
+async def test_group_switch_disables_fx(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(state.config, "data_dir", str(tmp_path))
+    state.set_enabled(True)
+    (tmp_path / "plugin_switches.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "defaults": {},
+                "groups": {"912875556": {"fx_tracker": False}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class GroupEvent(_FakeEvent):
+        def __init__(self, user_id: int, group_id: int) -> None:
+            super().__init__(user_id)
+            self.group_id = group_id
+
+    matcher = _FakeMatcher()
+    await _run(
+        commands.handle_fx(GroupEvent(1, 912875556), matcher, Message("price btc"))
+    )
+
+    assert "该群已禁用汇率功能" in str(matcher.sent[-1])
