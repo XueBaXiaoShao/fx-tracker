@@ -11,6 +11,8 @@ def test_parse_pair_variants() -> None:
     assert rates.parse_pair("BTC/USD") == ("BTC", "USD")
     assert rates.parse_pair("btc-usd") == ("BTC", "USD")
     assert rates.parse_pair("cny jpy") == ("CNY", "JPY")
+    assert rates.parse_pair("jpycny") == ("JPY", "CNY")
+    assert rates.parse_pair("BTCETH") == ("BTC", "ETH")
     assert rates.parse_pair("btc") == ("BTC", "USD")
     with pytest.raises(rates.RateError):
         rates.parse_pair("")

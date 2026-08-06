@@ -108,7 +108,11 @@ def parse_pair(text: str) -> tuple[str, str]:
         raise RateError("请输入币种对，例如：BTC/USD 或 CNY/JPY")
     parts = [part for part in cleaned.replace("-", "/").replace(" ", "/").split("/") if part]
     if len(parts) == 1:
-        return parts[0], "USD"
+        symbol = parts[0]
+        # 兼容连续六位写法：JPYCNY -> JPY/CNY、BTCETH -> BTC/ETH
+        if len(symbol) == 6:
+            return symbol[:3], symbol[3:]
+        return symbol, "USD"
     if len(parts) == 2:
         return parts[0], parts[1]
     raise RateError(f"币种对格式错误：{text}")
