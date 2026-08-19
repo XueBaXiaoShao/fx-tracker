@@ -127,6 +127,17 @@ def format_rate(value: float) -> str:
     return f"{value:.6f}"
 
 
+def format_amount(value: float) -> str:
+    """金额换算结果的智能精度：大额保留两位，小额保留更多有效位。"""
+    if value >= 100:
+        return f"{value:,.2f}"
+    if value >= 1:
+        return f"{value:.4f}".rstrip("0").rstrip(".")
+    if value >= 0.0001:
+        return f"{value:.6f}".rstrip("0").rstrip(".")
+    return f"{value:.8f}".rstrip("0").rstrip(".")
+
+
 async def _request(method: str, url: str, params: dict) -> dict:
     last_error: Exception | None = None
     for attempt in range(max(1, config.request_retries)):

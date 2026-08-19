@@ -53,6 +53,7 @@ def _plugin_switch_enabled(event: MessageEvent) -> bool:
 def _help_text() -> str:
     return """【汇率插件】（测试，默认关闭）
 - /shou fx price <币种对> —— 查询汇率，如 BTC/USD、CNY/JPY
+- /shou fx calc <金额> <币种对> —— 直接换算，如 calc 100 USD 或 calc 0.5 BTC/USD
 - /shou fx chart <币种对> [天数] —— 查看近 N 天汇率走势图（默认 30 天）
 - /shou fx add <币种对> —— 加入我的关注列表
 - /shou fx del <币种对> —— 移出我的关注列表
@@ -99,6 +100,8 @@ async def handle_fx(
             await matcher.finish(_help_text())
         if sub == "price":
             await _cmd_price(matcher, rest)
+        elif sub in ("calc", "convert"):
+            await _cmd_calc(matcher, rest)
         elif sub in ("chart", "trend"):
             await _cmd_chart(matcher, rest)
         elif sub == "add":
@@ -121,6 +124,49 @@ async def _cmd_price(matcher: Matcher, value: str) -> None:
     )
 
 
+_AMOUNT_RE = re.compile(
+    r"^(\d+(?:\.\d+)?)\s*"
+    r"([A-Za-z]{3,6}(?:\s*[/\-]\s*[A-Za-z]{3,6})?)$"
+)
+
+
+def _split_amount(value: str) -> tuple[float, str, str]:
+    """把 "100 USD/CNY"、"100USD"、"0.5 btc usd" 拆成（金额, 原样金额文本, 币种对）。"""
+    text = (value or "").strip().replace("，", "/")
+    if not text:
+        raise rates.RateError(
+            "用法：/shou fx calc <金额> <币种对>，如 calc 100 USD/CNY"
+        )
+    match = _AMOUNT_RE.match(text)
+    if match:
+        amount = float(match.group(1))
+        amount_text, pair_text = match.group(1), match.group(2)
+    else:
+        parts = text.split(maxsplit=1)
+        try:
+            amount = float(parts[0])
+        except (ValueError, IndexError):
+            raise rates.RateError("金额格式不正确，例如：calc 100 USD/CNY")
+        amount_text = parts[0]
+        pair_text = parts[1].strip() if len(parts) > 1 else ""
+    if amount <= 0:
+        raise rates.RateError("金额需大于 0")
+    if not pair_text:
+        raise rates.RateError("请输入要换算的币种对，例如：calc 100 USD/CNY")
+    return amount, amount_text, pair_text
+
+
+async def _cmd_calc(matcher: Matcher, value: str) -> None:
+    """直接换算：calc <金额> <币种对>，如 calc 100 USD、calc 0.5 BTC/USD。"""
+    amount, amount_text, pair_text = _split_amount(value)
+    base, quote = rates.parse_pair(pair_text)
+    rate = await rates.fetch_rate(base, quote)
+    await matcher.finish(
+        f"{amount_text} {base} = "
+        f"{rates.format_amount(amount * rate)} {quote}"
+    )
+
+
 async def _cmd_chart(matcher: Matcher, value: str) -> None:
     parts = value.split()
     if not parts:
@@ -135,7 +181,7 @@ async def _cmd_chart(matcher: Matcher, value: str) -> None:
     if not values:
         await matcher.finish("没有获取到走势数据")
     png = chart.render_chart(
-        f"{base}/{quote} last {days}d",
+        f"{base}/{quote} 近{days}天走势",
         labels,
         values,
     )

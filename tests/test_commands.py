@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from nonebot.adapters.onebot.v11 import Message
 
 from fx_tracker import commands, rates, state, watchlist
@@ -153,6 +154,72 @@ async def test_fx_prefix_stripped_before_dispatch(monkeypatch, tmp_path) -> None
     )
 
     assert "1 JPY = 0.042830 CNY" in str(matcher.sent[-1])
+
+
+async def test_calc_direct_conversion(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(state.config, "data_dir", str(tmp_path))
+    state.set_enabled(True)
+
+    async def fake_fetch(base, quote):
+        return 7.1234
+
+    monkeypatch.setattr(rates, "fetch_rate", fake_fetch)
+    matcher = _FakeMatcher()
+    await _run(commands.handle_fx(_FakeEvent(1), matcher, Message("fx calc 100 usd")))
+
+    assert "100 USD = 712.34 CNY" in str(matcher.sent[-1])
+
+
+async def test_calc_compact_amount(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(state.config, "data_dir", str(tmp_path))
+    state.set_enabled(True)
+
+    async def fake_fetch(base, quote):
+        return 60000.0
+
+    monkeypatch.setattr(rates, "fetch_rate", fake_fetch)
+    matcher = _FakeMatcher()
+    await _run(commands.handle_fx(_FakeEvent(1), matcher, Message("fx calc 0.5btc")))
+
+    assert "0.5 BTC = 30,000.00 CNY" in str(matcher.sent[-1])
+
+
+async def test_calc_convert_alias(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(state.config, "data_dir", str(tmp_path))
+    state.set_enabled(True)
+
+    async def fake_fetch(base, quote):
+        return 7.1234
+
+    monkeypatch.setattr(rates, "fetch_rate", fake_fetch)
+    matcher = _FakeMatcher()
+    await _run(
+        commands.handle_fx(_FakeEvent(1), matcher, Message("fx convert 100 usd/cny"))
+    )
+
+    assert "100 USD = 712.34 CNY" in str(matcher.sent[-1])
+
+
+async def test_calc_bad_amount(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(state.config, "data_dir", str(tmp_path))
+    state.set_enabled(True)
+
+    matcher = _FakeMatcher()
+    await _run(commands.handle_fx(_FakeEvent(1), matcher, Message("fx calc abc")))
+
+    assert "金额格式不正确" in str(matcher.sent[-1])
+
+
+def test_split_amount_variants() -> None:
+    assert commands._split_amount("100 USD") == (100.0, "100", "USD")
+    assert commands._split_amount("100USD") == (100.0, "100", "USD")
+    assert commands._split_amount("0.5 BTC/USD") == (0.5, "0.5", "BTC/USD")
+    assert commands._split_amount("100 USD/CNY") == (100.0, "100", "USD/CNY")
+    assert commands._split_amount("100 usd cny") == (100.0, "100", "usd cny")
+    with pytest.raises(rates.RateError):
+        commands._split_amount("")
+    with pytest.raises(rates.RateError):
+        commands._split_amount("abc")
 
 
 async def test_chart_sends_image(monkeypatch, tmp_path) -> None:

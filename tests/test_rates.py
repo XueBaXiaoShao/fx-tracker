@@ -32,6 +32,16 @@ def test_format_rate() -> None:
     assert rates.format_rate(0.00001234) == "0.000012"
 
 
+def test_format_amount() -> None:
+    assert rates.format_amount(712.345) == "712.35"
+    assert rates.format_amount(7.1234) == "7.1234"
+    assert rates.format_amount(100) == "100.00"
+    assert rates.format_amount(0.5) == "0.5"
+    assert rates.format_amount(0.00012) == "0.00012"
+    assert rates.format_amount(0.00001234) == "0.00001234"
+    assert rates.format_amount(0.00000001234) == "0.00000001"
+
+
 async def test_fetch_fiat_pair(monkeypatch) -> None:
     async def fake_request(method, url, params):
         assert url == "https://api.frankfurter.app/latest"
