@@ -24,9 +24,23 @@ def _is_fx_event(event: MessageEvent) -> bool:
 fx_cmd = on_command("shou", rule=_is_fx_event, priority=1, block=True)
 
 
-# 闲人＠因幡めぐる大好き的代购计算器：固定按 0.055 倍换算（集成在 fx 插件，命令单独）
+# 闲人＠因幡めぐる大好き的代购计算器（集成在 fx 插件，命令单独）
+# R18 固定按 0.055 倍换算；全年龄按当日日元兑人民币汇率换算。
 XR_RATE = 0.055
 XR_NOTE = "闲人＠因幡めぐる大好き的代购计算器"
+
+# 模式关键字 -> (显示名, 汇率来源: fixed=固定0.055 / live=当日JPY->CNY)
+_XR_MODES = {
+    "r18": ("R18", "fixed"),
+    "r-18": ("R18", "fixed"),
+    "18": ("R18", "fixed"),
+    "全年龄": ("全年龄", "live"),
+    "全": ("全年龄", "live"),
+    "sfw": ("全年龄", "live"),
+    "allage": ("全年龄", "live"),
+    "allages": ("全年龄", "live"),
+    "normal": ("全年龄", "live"),
+}
 
 
 def _is_xr_event(event: MessageEvent) -> bool:
@@ -47,6 +61,23 @@ def _parse_xr_amount(value: str) -> tuple[float, str] | None:
     if amount <= 0:
         return None
     return amount, match.group(1)
+
+
+def _parse_xr_input(value: str) -> tuple[str, tuple[float, str]]:
+    """解析 /xr 参数：返回（模式显示名, （金额, 原样文本））；无模式时默认 R18。"""
+    text = (value or "").strip()
+    parts = text.split(maxsplit=1)
+    mode = "R18"
+    rest = text
+    if parts and parts[0].lower() in _XR_MODES:
+        mode, _kind = _XR_MODES[parts[0].lower()]
+        rest = parts[1].strip() if len(parts) > 1 else ""
+    parsed = _parse_xr_amount(rest)
+    if parsed is None:
+        raise rates.RateError(
+            "用法：/xr [r18|全年龄] <金额>，例如 /xr r18 12000、/xr 全年龄 5000"
+        )
+    return mode, parsed
 
 
 def _plugin_switch_enabled(event: MessageEvent) -> bool:
@@ -79,7 +110,7 @@ def _help_text() -> str:
     return """【汇率插件】（测试，默认关闭）
 - /shou fx price <币种对> —— 查询汇率，如 BTC/USD、CNY/JPY
 - /shou fx calc <金额> <币种对> —— 直接换算，如 calc 100 USD 或 calc 0.5 BTC/USD
-- /xr <金额> —— 闲人＠因幡めぐる大好き的代购计算器（金额 × 0.055）
+- /xr [r18|全年龄] <金额> —— 闲人＠因幡めぐる大好き的代购计算器（R18×0.055，全年龄按当日日元汇率）
 - /shou fx chart <币种对> [天数] —— 查看近 N 天汇率走势图（默认 30 天）
 - /shou fx add <币种对> —— 加入我的关注列表
 - /shou fx del <币种对> —— 移出我的关注列表
@@ -148,20 +179,29 @@ async def handle_xr(
     matcher: Matcher,
     arg: Message = CommandArg(),
 ) -> None:
-    """闲人＠因幡めぐる大好き的代购计算器：金额 × 0.055。"""
+    """闲人＠因幡めぐる大好き的代购计算器：R18 ×0.055；全年龄按当日日元兑人民币汇率。"""
     if not _plugin_switch_enabled(event):
         await matcher.finish("该群已禁用汇率功能")
     if not state.is_enabled():
         await matcher.finish(
             "汇率插件当前未启用（测试模式），管理员可用 /shou fx enable 开启"
         )
-    parsed = _parse_xr_amount((arg.extract_plain_text() or "").strip())
-    if parsed is None:
-        await matcher.finish("用法：/xr <金额>，例如 /xr 1000")
-    amount, amount_text = parsed
+    try:
+        mode, (amount, amount_text) = _parse_xr_input(
+            (arg.extract_plain_text() or "").strip()
+        )
+        if mode == "R18":
+            rate = XR_RATE
+            rate_text = f"{rate:g}"
+        else:
+            rate = await rates.fetch_rate("JPY", "CNY")
+            rate_text = f"{rate:.4f}"
+        result = amount * rate
+    except (rates.RateError, ValueError) as exc:
+        await matcher.finish(str(exc))
     await matcher.finish(
-        f"【{XR_NOTE}】\n"
-        f"{amount_text} × {XR_RATE:g} = {rates.format_amount(amount * XR_RATE)}"
+        f"【{XR_NOTE} · {mode}】\n"
+        f"{amount_text} × {rate_text} = {rates.format_amount(result)} 元"
     )
 
 

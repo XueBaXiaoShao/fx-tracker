@@ -231,16 +231,58 @@ def test_parse_xr_amount() -> None:
     assert commands._parse_xr_amount("") is None
 
 
-async def test_xr_calculator(monkeypatch, tmp_path) -> None:
+def test_parse_xr_input_modes() -> None:
+    assert commands._parse_xr_input("12000") == ("R18", (12000.0, "12000"))
+    assert commands._parse_xr_input("r18 12000") == ("R18", (12000.0, "12000"))
+    assert commands._parse_xr_input("R-18 12000") == ("R18", (12000.0, "12000"))
+    assert commands._parse_xr_input("全年龄 5000") == ("全年龄", (5000.0, "5000"))
+    assert commands._parse_xr_input("sfw 5000円") == ("全年龄", (5000.0, "5000"))
+    with pytest.raises(rates.RateError):
+        commands._parse_xr_input("")
+    with pytest.raises(rates.RateError):
+        commands._parse_xr_input("r18 abc")
+
+
+async def test_xr_r18_calculator(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(state.config, "data_dir", str(tmp_path))
+    state.set_enabled(True)
+
+    matcher = _FakeMatcher()
+    await _run(commands.handle_xr(_FakeEvent(1), matcher, Message("r18 12000")))
+
+    sent = str(matcher.sent[-1])
+    assert "闲人＠因幡めぐる大好き的代购计算器" in sent
+    assert "R18" in sent
+    assert "12000 × 0.055 = 660.00 元" in sent
+
+
+async def test_xr_defaults_to_r18(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(state.config, "data_dir", str(tmp_path))
     state.set_enabled(True)
 
     matcher = _FakeMatcher()
     await _run(commands.handle_xr(_FakeEvent(1), matcher, Message("1000")))
 
+    assert "1000 × 0.055 = 55 元" in str(matcher.sent[-1])
+
+
+async def test_xr_allage_uses_live_rate(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(state.config, "data_dir", str(tmp_path))
+    state.set_enabled(True)
+
+    async def fake_fetch(base, quote):
+        assert (base, quote) == ("JPY", "CNY")
+        return 0.0497
+
+    monkeypatch.setattr(rates, "fetch_rate", fake_fetch)
+    matcher = _FakeMatcher()
+    await _run(
+        commands.handle_xr(_FakeEvent(1), matcher, Message("全年龄 12000"))
+    )
+
     sent = str(matcher.sent[-1])
-    assert "闲人＠因幡めぐる大好き的代购计算器" in sent
-    assert "1000 × 0.055 = 55" in sent
+    assert "全年龄" in sent
+    assert "12000 × 0.0497 = 596.40 元" in sent
 
 
 async def test_xr_requires_amount(monkeypatch, tmp_path) -> None:
@@ -250,7 +292,7 @@ async def test_xr_requires_amount(monkeypatch, tmp_path) -> None:
     matcher = _FakeMatcher()
     await _run(commands.handle_xr(_FakeEvent(1), matcher, Message("abc")))
 
-    assert "用法：/xr <金额>" in str(matcher.sent[-1])
+    assert "用法：/xr [r18|全年龄] <金额>" in str(matcher.sent[-1])
 
 
 async def test_xr_disabled_blocks(monkeypatch, tmp_path) -> None:
@@ -258,7 +300,7 @@ async def test_xr_disabled_blocks(monkeypatch, tmp_path) -> None:
     state.set_enabled(False)
 
     matcher = _FakeMatcher()
-    await _run(commands.handle_xr(_FakeEvent(1), matcher, Message("1000")))
+    await _run(commands.handle_xr(_FakeEvent(1), matcher, Message("r18 1000")))
 
     assert "未启用" in str(matcher.sent[-1])
 
