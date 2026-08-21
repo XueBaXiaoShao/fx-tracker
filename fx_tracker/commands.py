@@ -24,6 +24,31 @@ def _is_fx_event(event: MessageEvent) -> bool:
 fx_cmd = on_command("shou", rule=_is_fx_event, priority=1, block=True)
 
 
+# 闲人＠因幡めぐる大好き的代购计算器：固定按 0.055 倍换算（集成在 fx 插件，命令单独）
+XR_RATE = 0.055
+XR_NOTE = "闲人＠因幡めぐる大好き的代购计算器"
+
+
+def _is_xr_event(event: MessageEvent) -> bool:
+    text = (event.get_plaintext() or "").lstrip()
+    return re.match(r"^/?xr(?:\s|$)", text, re.IGNORECASE) is not None
+
+
+xr_cmd = on_command("xr", rule=_is_xr_event, priority=1, block=True)
+
+
+def _parse_xr_amount(value: str) -> tuple[float, str] | None:
+    """提取开头金额数字，返回（金额, 原样文本）；非法或非正数返回 None。"""
+    text = (value or "").strip()
+    match = re.match(r"^(\d+(?:\.\d+)?)", text)
+    if not match:
+        return None
+    amount = float(match.group(1))
+    if amount <= 0:
+        return None
+    return amount, match.group(1)
+
+
 def _plugin_switch_enabled(event: MessageEvent) -> bool:
     """该群是否启用 fx_tracker（读取与 x_admin 共用的 plugin_switches.json）。"""
     group_id = getattr(event, "group_id", None)
@@ -54,6 +79,7 @@ def _help_text() -> str:
     return """【汇率插件】（测试，默认关闭）
 - /shou fx price <币种对> —— 查询汇率，如 BTC/USD、CNY/JPY
 - /shou fx calc <金额> <币种对> —— 直接换算，如 calc 100 USD 或 calc 0.5 BTC/USD
+- /xr <金额> —— 闲人＠因幡めぐる大好き的代购计算器（金额 × 0.055）
 - /shou fx chart <币种对> [天数] —— 查看近 N 天汇率走势图（默认 30 天）
 - /shou fx add <币种对> —— 加入我的关注列表
 - /shou fx del <币种对> —— 移出我的关注列表
@@ -114,6 +140,29 @@ async def handle_fx(
             await matcher.finish(_help_text())
     except (rates.RateError, ValueError) as exc:
         await matcher.finish(str(exc))
+
+
+@xr_cmd.handle()
+async def handle_xr(
+    event: MessageEvent,
+    matcher: Matcher,
+    arg: Message = CommandArg(),
+) -> None:
+    """闲人＠因幡めぐる大好き的代购计算器：金额 × 0.055。"""
+    if not _plugin_switch_enabled(event):
+        await matcher.finish("该群已禁用汇率功能")
+    if not state.is_enabled():
+        await matcher.finish(
+            "汇率插件当前未启用（测试模式），管理员可用 /shou fx enable 开启"
+        )
+    parsed = _parse_xr_amount((arg.extract_plain_text() or "").strip())
+    if parsed is None:
+        await matcher.finish("用法：/xr <金额>，例如 /xr 1000")
+    amount, amount_text = parsed
+    await matcher.finish(
+        f"【{XR_NOTE}】\n"
+        f"{amount_text} × {XR_RATE:g} = {rates.format_amount(amount * XR_RATE)}"
+    )
 
 
 async def _cmd_price(matcher: Matcher, value: str) -> None:

@@ -12,6 +12,7 @@ NoneBot2 + OneBot v11 独立插件，命令挂在 **`/shou fx`** 下，与 xqq-f
 | --- | --- |
 | `/shou fx price <币种对>` | 查询汇率，如 `BTC/USD`、`CNY/JPY` |
 | `/shou fx calc <金额> <币种对>` | 直接换算，如 `calc 100 USD`、`calc 0.5 BTC/USD`（别名 `convert`） |
+| `/xr <金额>` | 闲人＠因幡めぐる大好き的代购计算器：固定金额 × 0.055（命令单独，集成在 fx 插件内） |
 | `/shou fx chart <币种对> [天数]` | 查看近 N 天汇率走势图（默认 30，最多 90） |
 | `/shou fx add <币种对>` | 加入我的关注列表 |
 | `/shou fx del <币种对>` | 移出我的关注列表 |

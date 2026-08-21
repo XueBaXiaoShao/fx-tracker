@@ -222,6 +222,47 @@ def test_split_amount_variants() -> None:
         commands._split_amount("abc")
 
 
+def test_parse_xr_amount() -> None:
+    assert commands._parse_xr_amount("1000") == (1000.0, "1000")
+    assert commands._parse_xr_amount("100.5円") == (100.5, "100.5")
+    assert commands._parse_xr_amount(" 50 ") == (50.0, "50")
+    assert commands._parse_xr_amount("abc") is None
+    assert commands._parse_xr_amount("0") is None
+    assert commands._parse_xr_amount("") is None
+
+
+async def test_xr_calculator(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(state.config, "data_dir", str(tmp_path))
+    state.set_enabled(True)
+
+    matcher = _FakeMatcher()
+    await _run(commands.handle_xr(_FakeEvent(1), matcher, Message("1000")))
+
+    sent = str(matcher.sent[-1])
+    assert "闲人＠因幡めぐる大好き的代购计算器" in sent
+    assert "1000 × 0.055 = 55" in sent
+
+
+async def test_xr_requires_amount(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(state.config, "data_dir", str(tmp_path))
+    state.set_enabled(True)
+
+    matcher = _FakeMatcher()
+    await _run(commands.handle_xr(_FakeEvent(1), matcher, Message("abc")))
+
+    assert "用法：/xr <金额>" in str(matcher.sent[-1])
+
+
+async def test_xr_disabled_blocks(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(state.config, "data_dir", str(tmp_path))
+    state.set_enabled(False)
+
+    matcher = _FakeMatcher()
+    await _run(commands.handle_xr(_FakeEvent(1), matcher, Message("1000")))
+
+    assert "未启用" in str(matcher.sent[-1])
+
+
 async def test_chart_sends_image(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(state.config, "data_dir", str(tmp_path))
     state.set_enabled(True)
