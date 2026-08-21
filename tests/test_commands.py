@@ -237,6 +237,8 @@ def test_parse_xr_input_modes() -> None:
     assert commands._parse_xr_input("R-18 12000") == ("R18", (12000.0, "12000"))
     assert commands._parse_xr_input("全年龄 5000") == ("全年龄", (5000.0, "5000"))
     assert commands._parse_xr_input("sfw 5000円") == ("全年龄", (5000.0, "5000"))
+    assert commands._parse_xr_input("全 5000") == ("全年龄", (5000.0, "5000"))
+    assert commands._parse_xr_input("all 5000") == ("全年龄", (5000.0, "5000"))
     with pytest.raises(rates.RateError):
         commands._parse_xr_input("")
     with pytest.raises(rates.RateError):

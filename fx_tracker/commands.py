@@ -37,6 +37,8 @@ _XR_MODES = {
     "全年龄": ("全年龄", "live"),
     "全": ("全年龄", "live"),
     "sfw": ("全年龄", "live"),
+    "safe": ("全年龄", "live"),
+    "all": ("全年龄", "live"),
     "allage": ("全年龄", "live"),
     "allages": ("全年龄", "live"),
     "normal": ("全年龄", "live"),
@@ -110,7 +112,7 @@ def _help_text() -> str:
     return """【汇率插件】（测试，默认关闭）
 - /shou fx price <币种对> —— 查询汇率，如 BTC/USD、CNY/JPY
 - /shou fx calc <金额> <币种对> —— 直接换算，如 calc 100 USD 或 calc 0.5 BTC/USD
-- /xr [r18|全年龄] <金额> —— 闲人＠因幡めぐる大好き的代购计算器（R18×0.055，全年龄按当日日元汇率）
+- /xr [r18|全年龄|全|sfw] <金额> —— 闲人＠因幡めぐる大好き的代购计算器（r18/18 固定×0.055；全年龄简写 全/sfw，按当日日元汇率）
 - /shou fx chart <币种对> [天数] —— 查看近 N 天汇率走势图（默认 30 天）
 - /shou fx add <币种对> —— 加入我的关注列表
 - /shou fx del <币种对> —— 移出我的关注列表
