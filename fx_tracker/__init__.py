@@ -15,8 +15,10 @@ __plugin_meta__ = PluginMetadata(
         "默认关闭，管理员 /shou fx enable 开启"
     ),
     usage=(
-        "/shou fx price <币种对>、/shou fx add <币种对>、/shou fx del <币种对>、"
-        "/shou fx list、/shou fx enable|disable（管理员）"
+        "/shou fx price <币种对>、/shou fx calc <金额> <币种对>、"
+        "/shou fx chart <币种对> [天数]、/shou fx add <币种对>、"
+        "/shou fx del <币种对>、/shou fx list、"
+        "/shou fx enable|disable（管理员）"
     ),
     type="application",
     homepage="",

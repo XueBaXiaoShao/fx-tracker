@@ -44,12 +44,51 @@ def test_format_amount() -> None:
 
 async def test_fetch_fiat_pair(monkeypatch) -> None:
     async def fake_request(method, url, params):
-        assert url == "https://api.frankfurter.app/latest"
+        assert url == "https://api.frankfurter.dev/v1/latest"
         assert params == {"from": "USD", "to": "CNY"}
         return {"rates": {"CNY": 7.12}}
 
     monkeypatch.setattr(rates, "_request", fake_request)
     assert await rates.fetch_rate("USD", "CNY") == 7.12
+
+
+async def test_fetch_fiat_unsupported_uses_fallback(monkeypatch) -> None:
+    """AED 等 ECB 未覆盖币种直接走 open.er-api 兜底。"""
+    calls = []
+
+    async def fake_request(method, url, params):
+        calls.append((url, params))
+        assert url == "https://open.er-api.com/v6/latest/AED"
+        assert params == {}
+        return {
+            "result": "success",
+            "base_code": "AED",
+            "rates": {"CNY": 1.822644},
+        }
+
+    monkeypatch.setattr(rates, "_request", fake_request)
+    assert await rates.fetch_rate("AED", "CNY") == 1.822644
+    assert len(calls) == 1
+
+
+async def test_fetch_fiat_falls_back_when_frankfurter_fails(monkeypatch) -> None:
+    calls = []
+
+    async def fake_request(method, url, params):
+        calls.append(url)
+        if "frankfurter" in url:
+            raise rates.RateError("Frankfurter down")
+        assert url == "https://open.er-api.com/v6/latest/USD"
+        return {
+            "result": "success",
+            "base_code": "USD",
+            "rates": {"CNY": 7.11},
+        }
+
+    monkeypatch.setattr(rates, "_request", fake_request)
+    assert await rates.fetch_rate("USD", "CNY") == 7.11
+    assert any("frankfurter" in url for url in calls)
+    assert any("open.er-api" in url for url in calls)
 
 
 async def test_fetch_crypto_to_fiat(monkeypatch) -> None:
@@ -96,6 +135,24 @@ async def test_fetch_history_fiat(monkeypatch) -> None:
 
     assert labels == ["2026-08-01", "2026-08-02"]
     assert values == [0.0428, 0.0429]
+
+
+async def test_fetch_history_unsupported_uses_currency_api(monkeypatch) -> None:
+    """AED/CNY 走势回退到 fawazahmed0/currency-api 的按日数据。"""
+    urls = []
+
+    async def fake_request(method, url, params):
+        urls.append(url)
+        assert "currency-api@" in url
+        assert url.endswith("/v1/currencies/aed.json")
+        return {"aed": {"cny": 1.82}}
+
+    monkeypatch.setattr(rates, "_request", fake_request)
+    labels, values = await rates.fetch_history("AED", "CNY", days=3)
+
+    assert len(labels) == 3
+    assert values == [1.82, 1.82, 1.82]
+    assert len(urls) == 3
 
 
 async def test_fetch_history_crypto_to_fiat(monkeypatch) -> None:

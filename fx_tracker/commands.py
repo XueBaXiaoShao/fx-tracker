@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import ast
 import base64
-import re
 import json
+import math
+import operator
+import re
 from pathlib import Path
 
 from nonebot import on_command
@@ -111,7 +114,7 @@ def _plugin_switch_enabled(event: MessageEvent) -> bool:
 def _help_text() -> str:
     return """【汇率插件】（测试，默认关闭）
 - /shou fx price <币种对> —— 查询汇率，如 BTC/USD、CNY/JPY
-- /shou fx calc <金额> <币种对> —— 直接换算，如 calc 100 USD 或 calc 0.5 BTC/USD
+- /shou fx calc <金额> <币种对> —— 直接换算，如 calc 100 USD、calc 0.5 BTC/USD；金额支持 + - * / 与括号（如 calc 100/3.672 USD/CNY）
 - /xr [r18|全年龄|全|sfw] <金额> —— 闲人＠因幡めぐる大好き的代购计算器（r18/18 固定×0.055；全年龄简写 全/sfw，按当日日元汇率）
 - /shou fx chart <币种对> [天数] —— 查看近 N 天汇率走势图（默认 30 天）
 - /shou fx add <币种对> —— 加入我的关注列表
@@ -119,7 +122,7 @@ def _help_text() -> str:
 - /shou fx list —— 查看我的关注列表及最新汇率
 - /shou fx enable|disable —— 开启/关闭插件（仅管理员）
 
-支持法定货币（USD/CNY/JPY/EUR...）与虚拟货币（BTC/ETH/USDT...）；
+支持法定货币（USD/CNY/JPY/EUR/AED...，ECB 未覆盖的币种自动走备用接口）与虚拟货币（BTC/ETH/USDT...）；
 币种对可用 /、- 或空格分隔，单币种默认兑 CNY。"""
 
 
@@ -215,31 +218,82 @@ async def _cmd_price(matcher: Matcher, value: str) -> None:
     )
 
 
-_AMOUNT_RE = re.compile(
-    r"^(\d+(?:\.\d+)?)\s*"
-    r"([A-Za-z]{3,6}(?:\s*[/\-]\s*[A-Za-z]{3,6})?)$"
+_AMOUNT_SPLIT_RE = re.compile(
+    r"^([0-9.()+\-*/\s]+?)\s*"
+    r"([A-Za-z]{3,6}(?:\s*[/\-]\s*[A-Za-z]{3,6}|\s+[A-Za-z]{3,6})?)$"
 )
+_AMOUNT_OPS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+}
+_PURE_AMOUNT_RE = re.compile(r"^[0-9.()+\-*/\s]+$")
+
+
+def _eval_amount_expression(text: str) -> float:
+    """安全计算金额表达式（仅数字、+ - * / 与括号）。"""
+    expression = (text or "").strip()
+    if not expression:
+        raise rates.RateError(
+            "用法：/shou fx calc <金额> <币种对>，如 calc 100 USD/CNY"
+        )
+    if len(expression) > 64:
+        raise rates.RateError("金额表达式过长")
+    try:
+        tree = ast.parse(expression, mode="eval")
+    except SyntaxError:
+        raise rates.RateError(
+            "金额格式不正确，例如：calc 100 USD/CNY 或 calc 100/3.672 USD/CNY"
+        ) from None
+
+    def _eval(node: ast.AST) -> float:
+        if isinstance(node, ast.Expression):
+            return _eval(node.body)
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, (int, float))
+            and not isinstance(node.value, bool)
+        ):
+            return float(node.value)
+        if isinstance(node, ast.UnaryOp) and isinstance(
+            node.op, (ast.UAdd, ast.USub)
+        ):
+            value = _eval(node.operand)
+            return -value if isinstance(node.op, ast.USub) else value
+        if isinstance(node, ast.BinOp) and type(node.op) in _AMOUNT_OPS:
+            left = _eval(node.left)
+            right = _eval(node.right)
+            if isinstance(node.op, ast.Div) and right == 0:
+                raise rates.RateError("金额表达式无效：除数不能为 0")
+            return _AMOUNT_OPS[type(node.op)](left, right)
+        raise rates.RateError("金额表达式仅支持数字与 + - * / 和括号")
+
+    value = _eval(tree)
+    if not math.isfinite(value):
+        raise rates.RateError("金额表达式结果无效")
+    return value
 
 
 def _split_amount(value: str) -> tuple[float, str, str]:
-    """把 "100 USD/CNY"、"100USD"、"0.5 btc usd" 拆成（金额, 原样金额文本, 币种对）。"""
+    """把 "100 USD/CNY"、"100USD"、"100/3.672 USD/CNY" 拆成（金额, 表达式文本, 币种对）。"""
     text = (value or "").strip().replace("，", "/")
     if not text:
         raise rates.RateError(
             "用法：/shou fx calc <金额> <币种对>，如 calc 100 USD/CNY"
         )
-    match = _AMOUNT_RE.match(text)
-    if match:
-        amount = float(match.group(1))
-        amount_text, pair_text = match.group(1), match.group(2)
-    else:
-        parts = text.split(maxsplit=1)
-        try:
-            amount = float(parts[0])
-        except (ValueError, IndexError):
-            raise rates.RateError("金额格式不正确，例如：calc 100 USD/CNY")
-        amount_text = parts[0]
-        pair_text = parts[1].strip() if len(parts) > 1 else ""
+    match = _AMOUNT_SPLIT_RE.match(text)
+    if not match:
+        if _PURE_AMOUNT_RE.fullmatch(text):
+            raise rates.RateError(
+                "请输入要换算的币种对，例如：calc 100 USD/CNY"
+            )
+        raise rates.RateError(
+            "金额格式不正确，例如：calc 100 USD/CNY 或 calc 100/3.672 USD/CNY"
+        )
+    amount_text = match.group(1).strip()
+    pair_text = match.group(2).strip()
+    amount = _eval_amount_expression(amount_text)
     if amount <= 0:
         raise rates.RateError("金额需大于 0")
     if not pair_text:

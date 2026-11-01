@@ -329,3 +329,50 @@ async def test_chart_sends_image(monkeypatch, tmp_path) -> None:
     message = matcher.sent[-1]
     assert message[0].type == "image"
     assert "走势" in str(message[1])
+
+
+async def test_calc_amount_expression(monkeypatch, tmp_path) -> None:
+    """金额支持四则运算：calc 100/3.672 USD/CNY。"""
+    monkeypatch.setattr(state.config, "data_dir", str(tmp_path))
+    state.set_enabled(True)
+
+    async def fake_fetch(base, quote):
+        assert (base, quote) == ("USD", "CNY")
+        return 1.0
+
+    monkeypatch.setattr(rates, "fetch_rate", fake_fetch)
+    matcher = _FakeMatcher()
+    await _run(
+        commands.handle_fx(
+            _FakeEvent(1), matcher, Message("fx calc 100/3.672 USD/CNY")
+        )
+    )
+
+    sent = str(matcher.sent[-1])
+    assert "100/3.672 USD = 27.2331 CNY" in sent
+
+
+def test_split_amount_expression_variants() -> None:
+    amount, text, pair = commands._split_amount("100/3.672 USD/CNY")
+    assert amount == pytest.approx(100 / 3.672)
+    assert text == "100/3.672"
+    assert pair == "USD/CNY"
+
+    amount, text, pair = commands._split_amount("100/3.672USD/CNY")
+    assert amount == pytest.approx(100 / 3.672)
+    assert text == "100/3.672"
+    assert pair == "USD/CNY"
+
+    amount, text, pair = commands._split_amount("(100+20)*2 USD")
+    assert amount == 240
+    assert text == "(100+20)*2"
+    assert pair == "USD"
+
+
+def test_split_amount_rejects_bad_expression() -> None:
+    with pytest.raises(rates.RateError):
+        commands._split_amount("100/0 USD/CNY")
+    with pytest.raises(rates.RateError):
+        commands._split_amount("2**3 USD/CNY")
+    with pytest.raises(rates.RateError):
+        commands._split_amount("100 USD/CNY --")

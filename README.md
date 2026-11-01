@@ -11,7 +11,7 @@ NoneBot2 + OneBot v11 独立插件，命令挂在 **`/shou fx`** 下，与 xqq-f
 | 命令 | 说明 |
 | --- | --- |
 | `/shou fx price <币种对>` | 查询汇率，如 `BTC/USD`、`CNY/JPY` |
-| `/shou fx calc <金额> <币种对>` | 直接换算，如 `calc 100 USD`、`calc 0.5 BTC/USD`（别名 `convert`） |
+| `/shou fx calc <金额> <币种对>` | 直接换算，如 `calc 100 USD`、`calc 0.5 BTC/USD`、`calc 100/3.672 USD/CNY`；金额支持 `+ - * /` 与括号（别名 `convert`） |
 | `/xr [r18\|全年龄\|全\|sfw] <金额>` | 闲人＠因幡めぐる大好き的代购计算器：`r18`/`18`（默认）按固定 ×0.055，`全年龄`（简写 `全`/`sfw`/`all`）按当日日元兑人民币汇率换算（命令单独，集成在 fx 插件内） |
 | `/shou fx chart <币种对> [天数]` | 查看近 N 天汇率走势图（默认 30，最多 90） |
 | `/shou fx add <币种对>` | 加入我的关注列表 |
@@ -24,7 +24,7 @@ NoneBot2 + OneBot v11 独立插件，命令挂在 **`/shou fx`** 下，与 xqq-f
 
 ## 数据源
 
-- 法定货币：Frankfurter（ECB 汇率，免费无需密钥）；
+- 法定货币：Frankfurter（ECB 汇率，免费无需密钥）；ECB 未覆盖的币种（AED/SAR/TWD/VND/RUB 等）自动回退 open.er-api，走势图回退 currency-api；
 - 虚拟货币：CoinGecko（免费无需密钥）；
 - 币币对（如 BTC/ETH）经 USD 换算。
 
