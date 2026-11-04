@@ -142,6 +142,9 @@ async def handle_fx(
     sub = parts[0].lower() if parts else ""
     rest = parts[1].strip() if len(parts) > 1 else ""
 
+    if sub in ("help", "帮助", "用法"):
+        await matcher.finish(_help_text())
+
     if sub in ("enable", "disable"):
         if not permissions.is_admin(int(getattr(event, "user_id", 0))):
             await matcher.finish("只有管理员可以开启/关闭汇率插件")
